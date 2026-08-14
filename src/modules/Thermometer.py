@@ -1,45 +1,55 @@
 #!/usr/bin/env python3
-#############################################################################
+########################################################################
 # Filename    : Thermometer.py
-# Description : DIY Thermometer
+# Description : Read the Freenove board thermistor.
 # Author      : www.freenove.com
 # modification: 2024/07/29
+# Adapted for labproc-projeto: 2026/08/14
 ########################################################################
-import time
 import math
-from utils.ADCDevice import *
 
-adc = ADCDevice(0x48) # Define an ADCDevice class object
+from modules.utils.ADCDevice import ADCDevice, ADS7830
 
-def setup():
-    global adc
-    if(adc.detectI2C(0x48)): # Detect the pcf8591.
-        adc = ADS7830(0x48)
-    else:
-        print("No correct I2C address found, \n"
-        "Please use command 'i2cdetect -y 1' to check the I2C address! \n"
-        "Program Exit. \n");
-        exit(-1)
-        
-def loop():
-    while True:
-        value = adc.analogRead(0)        # read ADC value A0 pin
-        voltage = value / 255.0 * 3.3        # calculate voltage
-        Rt = 10 * voltage / (3.3 - voltage)    # calculate resistance value of thermistor
-        tempK = 1/(1/(273.15 + 25) + math.log(Rt/10)/3950.0) # calculate temperature (Kelvin)
-        tempC = tempK -273.15        # calculate temperature (Celsius)
-        print ('ADC Value : %d, Voltage : %.2f, Temperature : %.2f'%(value,voltage,tempC))
-        time.sleep(0.5)
 
-def destroy():
-    adc.close()
-    
-if __name__ == '__main__':  # Program entrance
-    print ('Program is starting ... ')
-    try:
-        setup()
-        loop()
-    except KeyboardInterrupt:  # Press ctrl-c to end the program.
-        print("Ending program")
-    finally:
-        destroy()
+ADC_ADDRESS = 0x48
+THERMISTOR_CHANNEL = 0
+REFERENCE_VOLTAGE = 3.3
+REFERENCE_RESISTANCE = 10.0
+REFERENCE_TEMPERATURE_C = 25.0
+THERMISTOR_BETA = 3950.0
+
+
+class Thermometer:
+    def __init__(self):
+        self._adc = None
+
+        probe = ADCDevice(ADC_ADDRESS)
+        try:
+            if not probe.detectI2C(ADC_ADDRESS):
+                raise RuntimeError("ADS7830 não encontrado no barramento I²C")
+        finally:
+            probe.close()
+
+        self._adc = ADS7830(ADC_ADDRESS)
+
+    def read_celsius(self):
+        value = self._adc.analogRead(THERMISTOR_CHANNEL)
+        if value <= 0 or value >= 255:
+            raise ValueError(f"Leitura inválida do termistor: {value}")
+
+        voltage = value / 255.0 * REFERENCE_VOLTAGE
+        resistance = (
+            REFERENCE_RESISTANCE
+            * voltage
+            / (REFERENCE_VOLTAGE - voltage)
+        )
+        temperature_kelvin = 1.0 / (
+            1.0 / (273.15 + REFERENCE_TEMPERATURE_C)
+            + math.log(resistance / REFERENCE_RESISTANCE) / THERMISTOR_BETA
+        )
+        return temperature_kelvin - 273.15
+
+    def close(self):
+        if self._adc is not None:
+            self._adc.close()
+            self._adc = None

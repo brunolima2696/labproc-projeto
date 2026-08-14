@@ -101,10 +101,10 @@ class FreenoveController:
         y_value = self._adc.analogRead(JOYSTICK_Y_CHANNEL)
 
         changed = self._update_axis(
-            x_value, self._center_x, ecodes.KEY_LEFT, ecodes.KEY_RIGHT
+            x_value, self._center_x, ecodes.KEY_RIGHT, ecodes.KEY_LEFT
         )
         changed |= self._update_axis(
-            y_value, self._center_y, ecodes.KEY_UP, ecodes.KEY_DOWN
+            y_value, self._center_y, ecodes.KEY_DOWN, ecodes.KEY_UP
         )
 
         for pin, key in BUTTON_KEY_MAP.items():

@@ -6,6 +6,7 @@ import sys
 from contextlib import suppress
 
 from modules.Alertor import EmulatorBuzzer
+# from modules.FanController import FanController
 from modules.Joystick import FreenoveController
 from modules.StopWatch import SessionDisplay
 
@@ -33,6 +34,7 @@ def main():
     buzzer = None
     controller = None
     display = None
+    # fan = None
     retroarch = None
     emulator_started = False
 
@@ -40,12 +42,14 @@ def main():
         buzzer = EmulatorBuzzer()
         controller = FreenoveController()
         display = SessionDisplay()
+        # fan = FanController()
 
         retroarch = subprocess.Popen(RETROARCH_COMMAND)
         emulator_started = True
 
         controller.start()
         display.start()
+        # fan.start()
         buzzer.emulator_started()
 
         return retroarch.wait()
@@ -68,6 +72,9 @@ def main():
             if display is not None:
                 with suppress(Exception):
                     display.stop()
+            # if fan is not None:
+            #     with suppress(Exception):
+            #         fan.stop()
             if buzzer is not None:
                 with suppress(Exception):
                     buzzer.emulator_stopped()
@@ -81,6 +88,9 @@ def main():
         if display is not None:
             with suppress(Exception):
                 display.close()
+        # if fan is not None:
+        #     with suppress(Exception):
+        #         fan.close()
 
 
 if __name__ == "__main__":
