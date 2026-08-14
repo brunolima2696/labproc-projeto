@@ -1,3 +1,0 @@
-[submodule "external/RetroArch"]
-	path = external/RetroArch
-	url = https://github.com/libretro/RetroArch.git
