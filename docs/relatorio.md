@@ -153,7 +153,7 @@ O buzzer passivo usa o GPIO4. Duas notas ascendentes indicam o início do RetroA
 
 ## 4.4 Termômetro e ventoinha
 
-O termistor ocupa o canal A0 do ADS7830, no endereço I²C `0x48`. A conversão para graus Celsius deriva do [`Thermometer.py` da Freenove](https://github.com/Freenove/Freenove_Projects_Kit_for_Raspberry_Pi/blob/main/Code/Python_GPIOZero_Code/9_Thermometer/Thermometer.py), mas foi reorganizada como uma classe reutilizável que retorna o valor sem printar continuamente.
+O termistor ocupa o canal A0 do ADS7830, no endereço I²C `0x48`. A conversão para graus Celsius é feita no `Thermometer.py`.
 
 O `FanController.py` consulta a temperatura a cada 0,5 segundo. O relé do GPIO12 é ligado quando a temperatura atinge ou ultrapassa 25 °C e permanece ligado até que a leitura seja igual ou inferior a 20 °C. Em caso de erro de leitura, a rotina liga a ventoinha como medida de segurança e informa a falha no fluxo de erro do programa.
 
