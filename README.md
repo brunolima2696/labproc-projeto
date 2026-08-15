@@ -1,5 +1,7 @@
 # Emulação de SNES em Raspberry Pi
 
+[![Release](https://img.shields.io/github/v/release/brunolima2696/labproc-projeto?include_prereleases)](https://github.com/brunolima2696/labproc-projeto/releases)
+
 Projeto da disciplina PCS3732 — Laboratório de Processadores. A aplicação usa uma Raspberry Pi 3B+ para executar o RetroArch com o núcleo libretro-snes9x e integrar os periféricos da Freenove Projects Board.
 
 O `main.py` abre o RetroArch e coordena o joystick da placa, quatro botões GPIO, o display de sete segmentos e o buzzer. Controles USB também podem ser usados diretamente pelo RetroArch.
