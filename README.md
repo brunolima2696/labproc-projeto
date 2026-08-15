@@ -166,6 +166,16 @@ A suíte cobre a histerese e a falha segura da ventoinha, a conversão da temper
 
 Os testes automatizados não verificam conexões elétricas, calibração do termistor nem o comportamento físico do relé, display, buzzer e controles. Esses itens ainda precisam ser testados na Raspberry Pi.
 
+## Resultados iniciais (pré v1.0.0)
+
+Primeiro teste experimental realizado, cobrindo execução do emulador e coleta de temperaturas via termistor da placa.
+
+![Demo](docs/videos/teste-inicial.gif)
+
+Neste teste, as implementações do buzzer sonoro, display de tempo de sessão, mapeamento de joystick e botões GPIO e controle de ventoinha ainda não estão contempladas.
+
+
+
 ## Documentação
 
 Uma descrição mais detalhada da arquitetura e das decisões do projeto está em [docs/relatorio.md](docs/relatorio.md).

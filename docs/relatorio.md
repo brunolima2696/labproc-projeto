@@ -12,7 +12,7 @@
 
 <br>
 
-<img src="figuras/capa.png" alt="Brasão da Escola Politécnica da Universidade de São Paulo" width="300">
+<img src="images/capa.png" alt="Brasão da Escola Politécnica da Universidade de São Paulo" width="300">
 
 <br>
 
