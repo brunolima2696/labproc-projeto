@@ -16,9 +16,9 @@
 
 <br>
 
-# Emulador Super Nintendo
+# Emulação de Super Nintendo em Raspberry Pi
 
-**Sistema de emulação em Raspberry Pi com refrigeração ativa controlada por sensor**
+**Integração de emulação, controles e periféricos da Freenove Projects Board**
 
 Bruno de Souza Pimentel Lima - NUSP 11375308  
 Gabriel Christensen - NUSP 14571293  
@@ -31,11 +31,13 @@ São Paulo - 2026
 
 # 1. Motivação e justificativa
 
-O projeto propõe transformar o Raspberry Pi em um console dedicado à emulação do Super Nintendo, utilizando Raspberry Pi OS e RetroPie como base de software. Além de recuperar uma plataforma clássica de jogos em um equipamento compacto, o sistema cria um caso prático de integração entre sistema operacional, processamento multimídia, interfaces de entrada e controle de periféricos.
+O projeto utiliza uma Raspberry Pi 3B+ para emular jogos de Super Nintendo Entertainment System (SNES). A emulação é realizada pelo RetroArch com o núcleo libretro-snes9x, executados sobre um sistema operacional Linux. A Raspberry Pi mantém sua interface e seu sistema operacional convencionais e executa o software de emulação como uma aplicação.
 
-A execução contínua de emuladores exige processamento gráfico e de áudio, podendo elevar a temperatura do sistema e reduzir o desempenho por limitação térmica. Para tratar esse problema, a placa será usada como interface para a leitura do sensor DHT11 e o controle da ventoinha. O projeto passa, portanto, a incluir um laço embarcado completo: medição, decisão e acionamento. A temperatura interna da CPU poderá atuar como proteção adicional, sem substituir o sensor DHT11.
+Além da execução dos jogos, o projeto explora os periféricos da Freenove Projects Board. O joystick analógico e quatro botões são usados como entrada; o display de sete segmentos mostra o tempo da sessão; o buzzer informa o início e o encerramento do RetroArch; e o termistor, o conversor ADS7830 e o relé formam um sistema de refrigeração automática com uma ventoinha de 5 V.
 
-> **Resultado esperado:** um console que inicializa diretamente na interface do RetroPie, executa jogos compatíveis de SNES com controle externo e ajusta automaticamente a refrigeração conforme a temperatura medida.
+O projeto constitui um caso prático de integração entre Linux, emulação, barramento I²C, entradas GPIO, acionamento de cargas e execução concorrente de rotinas em Python.
+
+> **Resultado esperado:** uma Raspberry Pi capaz de executar jogos compatíveis de SNES pelo RetroArch e libretro-snes9x, receber comandos da placa ou de um controle USB e coordenar automaticamente os periféricos de indicação e refrigeração.
 
 # 2. Requisitos do sistema
 
@@ -43,62 +45,181 @@ A execução contínua de emuladores exige processamento gráfico e de áudio, p
 
 | ID | Requisito funcional | Prioridade |
 |---|---|---|
-| RF01 | Inicializar o Raspberry Pi OS e abrir automaticamente a interface do RetroPie/EmulationStation. | Essencial |
-| RF02 | Executar jogos compatíveis de Super Nintendo por meio do RetroArch e de um núcleo SNES configurado. | Essencial |
-| RF03 | Reconhecer ao menos um controle USB ou Bluetooth e permitir o mapeamento dos comandos direcionais e botões. | Essencial |
-| RF04 | Ler periodicamente a temperatura e a umidade fornecidas pelo sensor DHT11 conectado à placa. | Essencial |
-| RF05 | Ligar a ventoinha quando a temperatura ultrapassar o limite superior e desligá-la somente abaixo do limite inferior, aplicando histerese. | Essencial |
-| RF06 | Registrar temperatura, estado da ventoinha e eventuais falhas em arquivo de log acessível pelo sistema. | Importante |
+| RF01 | Executar jogos compatíveis de SNES com o núcleo libretro-snes9x. | Essencial |
+| RF02 | Usar o joystick analógico da placa como direcional do RetroArch. | Essencial |
+| RF03 | Mapear os botões SNES A, B, X e Y nos GPIOs 16, 21, 26 e 20, respectivamente. | Essencial |
+| RF04 | Exibir no display de quatro dígitos o tempo decorrido da sessão em minutos e segundos. | Essencial |
+| RF05 | Emitir alertas sonoros curtos ao iniciar e encerrar o RetroArch. | Importante |
+| RF06 | Ler periodicamente o termistor integrado por meio do ADS7830 no barramento I²C. | Essencial |
+| RF07 | Ligar a ventoinha em 25 °C e desligá-la em 20 °C, aplicando histerese. | Essencial |
+| RF08 | Acionar a ventoinha de 5 V pelo relé integrado conectado ao GPIO12. | Essencial |
 
 ## 2.2 Requisitos não funcionais
 
 | ID | Requisito não funcional |
 |---|---|
-| RNF01 | A emulação deve manter áudio e vídeo estáveis, sem travamentos perceptíveis durante a execução normal. |
-| RNF03 | A ventoinha de 5 V não pode ser alimentada diretamente por GPIO; o acionamento deve usar transistor ou MOSFET e terra comum. |
-| RNF04 | Os limites térmicos devem ser configuráveis; referência inicial: liga em 55 °C e desliga em 48 °C. |
-| RNF05 | O software de controle térmico deve executar como serviço independente do emulador e reiniciar automaticamente em caso de falha. |
+| RNF01 | A emulação deve manter áudio e vídeo estáveis durante a execução normal. |
+| RNF02 | A ventoinha deve ser alimentada pelo circuito de 5 V e comutada pelo relé, nunca diretamente pelo GPIO. |
+| RNF03 | A leitura da temperatura deve ocorrer em segundo plano, sem imprimir continuamente os valores no terminal. |
+| RNF04 | Os GPIOs devem ser liberados e o relé desligado no encerramento normal da aplicação. |
+| RNF05 | Uma falha na leitura do termistor deve manter a ventoinha ligada como medida de segurança e emitir apenas a mensagem de erro necessária. |
 
+# 3. Arquitetura
 
-
-# 3. Arquitetura proposta
-
-A arquitetura é dividida em dois fluxos paralelos. O primeiro executa a experiência de jogo: o usuário interage por um controle, a interface EmulationStation seleciona o título e o RetroArch executa o núcleo de emulação, enviando vídeo e áudio pela saída HDMI. O segundo fluxo é responsável pelo gerenciamento térmico, independentemente do emulador.
-
-## Arquitetura física e de software
+O `main.py` coordena o ciclo de vida do RetroArch e das rotinas auxiliares. As leituras do joystick, a atualização do display e o controle térmico são executados em threads próprias. O buzzer é acionado diretamente nos eventos de início e encerramento.
 
 ```mermaid
 flowchart TB
-    U[Controle USB / Bluetooth<br>Mapeamento de botões SNES]
-    E[EmulationStation<br>RetroArch + núcleo SNES]
-    S[HDMI: vídeo e áudio<br>Interface de seleção de jogos]
+    M[main.py<br>Coordenação e encerramento]
+    R[RetroArch<br>libretro-snes9x]
+    H[HDMI<br>Vídeo e áudio]
 
-    P[Raspberry Pi OS 64 bits<br>RetroPie<br>Armazenamento no microSD<br>Inicialização automática]
+    J[Joystick da placa<br>ADS7830 A5/A6]
+    B[Botões GPIO<br>A, B, X e Y]
+    V[Joystick.py<br>evdev + uinput]
+    U[Controle USB<br>Suporte nativo do RetroArch]
 
-    D[Sensor DHT11<br>Leitura digital]
-    C[Serviço em C/Python<br>Filtro + histerese]
-    A[GPIO → transistor/MOSFET<br>Proteção elétrica]
-    V[Ventoinha de 5 V<br>Refrigeração do sistema]
-    T[Temperatura interna da CPU<br>Proteção adicional]
+    D[StopWatch.py<br>Display MM:SS]
+    Z[Alertor.py<br>Buzzer]
 
-    U --> E --> S
-    P --> E
-    P --> C
-    D --> C --> A --> V
-    T -.-> C
+    T[Thermometer.py<br>ADS7830 A0]
+    F[FanController.py<br>25 °C / 20 °C]
+    E[Relé GPIO12]
+    C[Ventoinha de 5 V]
+
+    M --> R --> H
+    J --> V
+    B --> V --> R
+    U --> R
+    M --> D
+    M --> Z
+    M -.-> F
+    T --> F --> E --> C
 ```
 
-## 3.1 Componentes e responsabilidades
+## 3.1 Componentes físicos
 
 | Componente | Responsabilidade |
 |---|---|
-| Raspberry Pi 3B+/4 | Executar o sistema operacional, o RetroPie, o emulador e o serviço de controle térmico. |
-| Cartão microSD | Armazenar Raspberry Pi OS, configurações, temas, logs e jogos legalmente obtidos. |
-| Placa | Interligar o sensor DHT11 e o circuito de acionamento da ventoinha ao Raspberry Pi. |
-| Ventoinha de 5 V | Remover calor do dissipador do sistema; acionada por estágio de potência controlado por GPIO. |
-| Controle USB/Bluetooth | Fornecer comandos equivalentes ao controle original do SNES. |
-| Monitor/TV HDMI | Apresentar a interface de seleção e a saída audiovisual dos jogos. |
+| Raspberry Pi 3B+ | Executar Linux, Python, RetroArch e libretro-snes9x. |
+| Cartão microSD | Armazenar o sistema, as configurações. |
+| Freenove Projects Board | Disponibilizar joystick, botões, buzzer, display, termistor, ADS7830 e relé. |
+| Ventoinha de 5V | Refrigerar o sistema quando acionada pelo relé integrado. |
+| Controle USB opcional | Fornecer uma entrada alternativa reconhecida diretamente pelo RetroArch. |
+| Monitor HDMI | Reproduzir a interface, o vídeo e o áudio do RetroArch. |
 
-## 3.2 Lógica de controle da ventoinha
+## 3.2 Componentes de software
 
-O serviço térmico realiza leituras periódicas, aplica filtragem para reduzir oscilações e compara o valor com dois limiares. Ao atingir o limite superior, o GPIO aciona o estágio de potência e liga a ventoinha. Ela permanece ligada até que a temperatura fique abaixo do limite inferior. Essa histerese evita comutações rápidas e prolonga a vida útil do atuador. Uma condição de temperatura crítica deve manter a ventoinha ligada e registrar um alerta, mesmo que o RetroPie seja encerrado.
+Os exemplos do [repositório Freenove Projects Kit for Raspberry Pi](https://github.com/Freenove/Freenove_Projects_Kit_for_Raspberry_Pi) foram utilizados como referência para a integração com os componentes da placa.
+
+| Arquivo | Função |
+|---|---|
+| `src/main.py` | Inicia o RetroArch e coordena o ciclo de vida dos módulos. |
+| `src/modules/Joystick.py` | Lê o joystick e os botões e gera entradas de teclado para o RetroArch. |
+| `src/modules/utils/ADCDevice.py` | Realiza a comunicação I²C com o conversor ADS7830. |
+| `src/modules/StopWatch.py` | Controla o display e calcula o tempo decorrido da sessão. |
+| `src/modules/Alertor.py` | Controla os alertas sonoros emitidos pelo buzzer passivo. |
+| `src/modules/Thermometer.py` | Lê o termistor e converte o valor obtido em graus Celsius. |
+| `src/modules/FanController.py` | Aplica a histerese térmica e controla a ventoinha por meio do relé. |
+| `scripts/install_dependencies.sh` | Instala as dependências e configura o dispositivo virtual de entrada. |
+| `tests/` | Verifica automaticamente as principais regras do software com dispositivos simulados. |
+| `pytest.ini` | Define o diretório utilizado na coleta dos testes. |
+
+O RetroArch, o libretro-snes9x e as dependências Python são instalados como pacotes do sistema.
+
+# 4. Entradas e periféricos
+
+## 4.1 Joystick e botões da placa
+
+O joystick é conectado aos canais analógicos A5 e A6 do ADS7830. Os eventos são expostos ao sistema como um teclado virtual por `evdev` e `/dev/uinput`. O mapeamento usa as teclas padrão do RetroArch:
+
+| Comando SNES | Entrada física | Tecla enviada ao RetroArch |
+|---|---|---|
+| Direcional | Joystick A5/A6 | Setas direcionais |
+| A | GPIO16 | `X` |
+| B | GPIO21 | `Z` |
+| X | GPIO26 | `S` |
+| Y | GPIO20 | `A` |
+
+Dada a limitação de botões da placa, demais comandos do controle SNES não estão mapeados nesta versão. Um controle USB pode fornecer esses comandos adicionais e não depende de `uinput`.
+
+## 4.2 Display de sete segmentos
+
+O display de quatro dígitos é controlado pelo 74HC595 usando GPIO22 para dados, GPIO27 para latch e GPIO17 para clock. Enquanto o RetroArch está aberto, `StopWatch.py` mostra o tempo decorrido no formato `MM:SS`. O display é apagado no encerramento.
+
+## 4.3 Buzzer
+
+O buzzer passivo usa o GPIO4. Duas notas ascendentes indicam o início do RetroArch e as mesmas notas em ordem descendente indicam seu encerramento.
+
+## 4.4 Termômetro e ventoinha
+
+O termistor ocupa o canal A0 do ADS7830, no endereço I²C `0x48`. A conversão para graus Celsius deriva do [`Thermometer.py` da Freenove](https://github.com/Freenove/Freenove_Projects_Kit_for_Raspberry_Pi/blob/main/Code/Python_GPIOZero_Code/9_Thermometer/Thermometer.py), mas foi reorganizada como uma classe reutilizável que retorna o valor sem printar continuamente.
+
+O `FanController.py` consulta a temperatura a cada 0,5 segundo. O relé do GPIO12 é ligado quando a temperatura atinge ou ultrapassa 25 °C e permanece ligado até que a leitura seja igual ou inferior a 20 °C. Em caso de erro de leitura, a rotina liga a ventoinha como medida de segurança e informa a falha no fluxo de erro do programa.
+
+A implementação do controle da ventoinha ainda não foi testada no hardware.
+
+
+# 5. Mapa de conexões
+
+Todos os números abaixo seguem a numeração BCM dos GPIOs.
+
+| Recurso | GPIO ou canal |
+|---|---|
+| I²C SDA / SCL | GPIO2 / GPIO3 |
+| Buzzer passivo | GPIO4 |
+| Relé da ventoinha | GPIO12 |
+| Botão SNES A | GPIO16 |
+| Clock do display | GPIO17 |
+| Botão SNES Y | GPIO20 |
+| Botão SNES B | GPIO21 |
+| Dados do display | GPIO22 |
+| Botão SNES X | GPIO26 |
+| Latch do display | GPIO27 |
+| Termistor | ADS7830 A0 |
+| Eixo X do joystick | ADS7830 A5 |
+| Eixo Y do joystick | ADS7830 A6 |
+
+# 6. Testes automatizados
+
+Os módulos foram organizados para separar as decisões do software do acesso direto ao hardware. ADC, termômetro, relé, botões, teclado virtual, pinos do display e processo do RetroArch podem ser substituídos por objetos simulados. 
+
+A suíte utiliza `pytest` e está localizada em `tests/`. Ela verifica:
+
+- os limites de 25 °C e 20 °C, a histerese e o acionamento seguro da ventoinha em caso de erro;
+- a conversão das leituras do termistor para graus Celsius e a rejeição de valores inválidos;
+- a zona morta, a orientação dos eixos e o mapeamento dos quatro botões;
+- a conversão do tempo decorrido para os quatro dígitos do display;
+- a inicialização e o encerramento dos módulos coordenados pelo `main.py`.
+
+Os testes são executados com:
+
+```bash
+python3 -m pytest
+```
+
+Essa verificação não substitui os ensaios na Raspberry Pi, pois não avalia conexões elétricas, calibração do termistor nem o comportamento físico do relé, display, buzzer e controles.
+
+# 7. Instalação e execução
+
+O script `scripts/install_dependencies.sh` instala `retroarch`, `libretro-snes9x`, `i2c-tools`, `python3-smbus`, `python3-gpiozero`, `python3-evdev` e `python3-pytest`. O pacote `i2c-tools` é usado para diagnóstico do barramento, especialmente pelo comando `i2cdetect`, e não participa diretamente das leituras durante a execução.
+
+O mesmo instalador carrega o módulo `uinput`, registra seu carregamento em `/etc/modules-load.d/labproc-uinput.conf`, cria a regra `/etc/udev/rules.d/99-labproc-uinput.rules` para `/dev/uinput` e adiciona o usuário ao grupo `input`. Depois dessa configuração inicial é necessário reiniciar a sessão do usuário ou a Raspberry Pi.
+
+```bash
+bash scripts/install_dependencies.sh
+sudo raspi-config
+sudo reboot
+```
+
+O I²C deve ser habilitado em `raspi-config`.
+
+```bash
+python3 src/main.py
+```
+
+O `main.py` abre a interface normal do RetroArch. O núcleo libretro-snes9x e o jogo devem ser selecionados no próprio RetroArch. Nenhuma ROM é distribuída pelo projeto.
+
+# 8. Estado atual do projeto
+
+As rotinas de emulação, joystick, botões, display e buzzer estão presentes na versão atual. Termômetro e controle da ventoinha ainda precisam ter a implementação validada em hardware. A integração deve ser validada na Raspberry Pi com todos os periféricos conectados, incluindo o acionamento do relé, a leitura térmica e o reconhecimento de um controle USB.

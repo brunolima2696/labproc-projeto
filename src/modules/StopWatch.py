@@ -9,8 +9,6 @@
 import threading
 import time
 
-from gpiozero import OutputDevice
-
 
 DATA_PIN = 22
 LATCH_PIN = 27
@@ -24,11 +22,33 @@ SEGMENTS_OFF = 0xFF
 DIGIT_TIME = 0.002
 
 
+def elapsed_to_digits(elapsed_seconds):
+    if elapsed_seconds < 0:
+        raise ValueError("O tempo decorrido não pode ser negativo")
+
+    minutes = (elapsed_seconds // 60) % 100
+    seconds = elapsed_seconds % 60
+    return (
+        minutes // 10,
+        minutes % 10,
+        seconds // 10,
+        seconds % 10,
+    )
+
+
 class SessionDisplay:
-    def __init__(self):
-        self._data_pin = OutputDevice(DATA_PIN)
-        self._latch_pin = OutputDevice(LATCH_PIN)
-        self._clock_pin = OutputDevice(CLOCK_PIN)
+    def __init__(self, data_pin=None, latch_pin=None, clock_pin=None, time_source=None):
+        if data_pin is None or latch_pin is None or clock_pin is None:
+            from gpiozero import OutputDevice
+
+        self._data_pin = data_pin if data_pin is not None else OutputDevice(DATA_PIN)
+        self._latch_pin = (
+            latch_pin if latch_pin is not None else OutputDevice(LATCH_PIN)
+        )
+        self._clock_pin = (
+            clock_pin if clock_pin is not None else OutputDevice(CLOCK_PIN)
+        )
+        self._time_source = time_source if time_source is not None else time.monotonic
         self._stop_event = threading.Event()
         self._thread = None
         self._started_at = None
@@ -50,14 +70,7 @@ class SessionDisplay:
         self._latch_pin.on()
 
     def _display_elapsed(self, elapsed_seconds):
-        minutes = (elapsed_seconds // 60) % 100
-        seconds = elapsed_seconds % 60
-        digits = (
-            minutes // 10,
-            minutes % 10,
-            seconds // 10,
-            seconds % 10,
-        )
+        digits = elapsed_to_digits(elapsed_seconds)
 
         for index, value in enumerate(digits):
             segments = DIGIT_CODES[value]
@@ -71,14 +84,14 @@ class SessionDisplay:
 
     def _refresh(self):
         while not self._stop_event.is_set():
-            elapsed_seconds = int(time.monotonic() - self._started_at)
+            elapsed_seconds = int(self._time_source() - self._started_at)
             self._display_elapsed(elapsed_seconds)
 
     def start(self):
         if self._thread is not None:
             return
 
-        self._started_at = time.monotonic()
+        self._started_at = self._time_source()
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._refresh, daemon=True)
         self._thread.start()

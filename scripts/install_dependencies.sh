@@ -9,7 +9,8 @@ sudo apt install -y \
     i2c-tools \
     python3-smbus \
     python3-gpiozero \
-    python3-evdev
+    python3-evdev \
+    python3-pytest
 
 UINPUT_RULE='KERNEL=="uinput", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"'
 TARGET_USER="${SUDO_USER:-$USER}"
