@@ -93,7 +93,7 @@ flowchart TB
     U --> R
     M --> D
     M --> Z
-    M -.-> F
+    M --> F
     T --> F --> E --> C
 ```
 
@@ -157,7 +157,9 @@ O termistor ocupa o canal A0 do ADS7830, no endereço I²C `0x48`. A conversão 
 
 O `FanController.py` consulta a temperatura a cada 0,5 segundo. O relé do GPIO12 é ligado quando a temperatura atinge ou ultrapassa 25 °C e permanece ligado até que a leitura seja igual ou inferior a 20 °C. Em caso de erro de leitura, a rotina liga a ventoinha como medida de segurança e informa a falha no fluxo de erro do programa.
 
-A implementação do controle da ventoinha ainda não foi testada no hardware.
+O controlador é iniciado pelo `main.py` junto com os demais módulos. A leitura térmica ocorre em uma thread própria durante toda a sessão do RetroArch. No encerramento, a thread é finalizada, o relé é desligado e os recursos do termômetro são liberados.
+
+Para evitar conflitos entre periféricos que compartilham GPIOs na placa, a chave `3 — Active Buzzer` deve permanecer desligada e a chave `4 — Relay` ligada. O LED D7 acompanha o estado do relé e indica visualmente quando a ventoinha está em funcionamento.
 
 
 # 5. Mapa de conexões
@@ -198,7 +200,7 @@ Os testes são executados com:
 python3 -m pytest
 ```
 
-Essa verificação não substitui os ensaios na Raspberry Pi, pois não avalia conexões elétricas, calibração do termistor nem o comportamento físico do relé, display, buzzer e controles.
+Essa verificação isolada complementa os ensaios funcionais realizados na Raspberry Pi com o termistor, relé, ventoinha, display, buzzer e controles reais.
 
 # 7. Instalação e execução
 
@@ -222,4 +224,4 @@ O `main.py` abre a interface normal do RetroArch. O núcleo libretro-snes9x e o 
 
 # 8. Estado atual do projeto
 
-As rotinas de emulação, joystick, botões, display e buzzer estão presentes na versão atual. Termômetro e controle da ventoinha ainda precisam ter a implementação validada em hardware. A integração deve ser validada na Raspberry Pi com todos os periféricos conectados, incluindo o acionamento do relé, a leitura térmica e o reconhecimento de um controle USB.
+A versão final integra a emulação, o joystick, os botões GPIO, o display, o buzzer, o termômetro e o controle automático da ventoinha. O conjunto está funcional na Raspberry Pi com os periféricos conectados: o RetroArch é iniciado pelo `main.py`, as entradas controlam o emulador, o tempo da sessão é exibido, os alertas sonoros são emitidos e a refrigeração responde aos limites definidos de temperatura.
