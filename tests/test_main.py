@@ -54,6 +54,7 @@ def test_main_starts_and_closes_all_components():
     buzzer = FakeBuzzer()
     controller = FakeModule()
     display = FakeModule()
+    fan = FakeModule()
     process = FakeProcess(return_code=0)
     commands = []
 
@@ -64,6 +65,7 @@ def test_main_starts_and_closes_all_components():
             "buzzer": lambda: buzzer,
             "controller": lambda: controller,
             "display": lambda: display,
+            "fan": lambda: fan,
         },
     )
 
@@ -72,6 +74,7 @@ def test_main_starts_and_closes_all_components():
     assert buzzer.calls == ["started", "stopped", "close"]
     assert controller.calls == ["start", "stop", "close"]
     assert display.calls == ["start", "stop", "close"]
+    assert fan.calls == ["start", "stop", "close"]
 
 
 def test_main_returns_error_when_retroarch_is_missing(capsys):
