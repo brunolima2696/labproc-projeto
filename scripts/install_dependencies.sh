@@ -10,6 +10,7 @@ sudo apt install -y \
     python3-smbus \
     python3-gpiozero \
     python3-evdev \
+    python3-psutil \
     python3-pytest
 
 UINPUT_RULE='KERNEL=="uinput", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"'

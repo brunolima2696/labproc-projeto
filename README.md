@@ -4,7 +4,7 @@
 
 Projeto da disciplina PCS3732 — Laboratório de Processadores. A aplicação usa uma Raspberry Pi 3B+ para executar o RetroArch com o núcleo libretro-snes9x e integrar os periféricos da Freenove Projects Board.
 
-O `main.py` abre o RetroArch e coordena o joystick da placa, quatro botões GPIO, o display de sete segmentos, o buzzer e o sistema automático de refrigeração. Controles USB também podem ser usados diretamente pelo RetroArch.
+O `main.py` abre o RetroArch e coordena o joystick da placa, quatro botões GPIO, o display de sete segmentos, o buzzer, o sistema automático de refrigeração e o registro de desempenho. Controles USB também podem ser usados diretamente pelo RetroArch.
 
 ## Funcionalidades
 
@@ -15,7 +15,8 @@ O `main.py` abre o RetroArch e coordena o joystick da placa, quatro botões GPIO
 - display de quatro dígitos com o tempo da sessão;
 - alertas sonoros no início e no encerramento;
 - suporte nativo do RetroArch a controles USB;
-- leitura do termistor e controle automático de uma ventoinha de 5 V.
+- leitura do termistor e controle automático de uma ventoinha de 5 V;
+- geração de logs do RetroArch e das métricas de desempenho de cada sessão.
 
 ## Requisitos
 
@@ -38,6 +39,7 @@ As dependências são instaladas pelo script do projeto:
 - GPIO Zero;
 - SMBus e ferramentas I²C;
 - evdev e módulo `uinput`;
+- psutil para coleta das métricas de desempenho;
 - pytest para os testes automatizados.
 
 ## Instalação
@@ -81,6 +83,15 @@ python3 src/main.py
 O RetroArch será aberto. Use a interface para escolher o núcleo libretro-snes9x e carregar ROMs. Nenhuma ROM é distribuída neste repositório.
 
 Para encerrar, feche o RetroArch ou pressione `Ctrl+C` no terminal que executa o `main.py`. Os módulos ativos e os GPIOs serão finalizados pelo programa.
+
+## Registros de execução
+
+Cada execução cria dois arquivos em `logs/` com o mesmo identificador de sessão:
+
+- `retroarch-<sessão>.log`: mensagens, avisos e erros gerados pelo próprio RetroArch;
+- `performance-<sessão>.jsonl`: amostras estruturadas de desempenho registradas a cada segundo.
+
+Cada linha do arquivo JSONL é um objeto independente com horário, tempo de sessão, PID, uso de CPU e memória do RetroArch, uso geral de CPU e memória, temperatura do processador, temperatura medida pelo termistor e estado da ventoinha. Os dados são gravados sem impressão contínua no terminal e cada linha é persistida imediatamente.
 
 ## Controles
 
@@ -134,6 +145,7 @@ src/modules/StopWatch.py          Display e tempo da sessão
 src/modules/Alertor.py            Buzzer
 src/modules/Thermometer.py        Leitura de temperatura
 src/modules/FanController.py      Controle automático da ventoinha
+src/modules/PerformanceMonitor.py Registro de métricas em JSONL
 src/modules/utils/ADCDevice.py    Comunicação com o ADS7830
 scripts/install_dependencies.sh   Instalação das dependências
 docs/relatorio.md                 Relatório técnico do projeto
@@ -162,13 +174,13 @@ Se o grupo `input` ainda não aparecer para o usuário, reinicie a sessão ou a 
 
 ## Testes automatizados
 
-Os testes usam objetos simulados no lugar do ADC, relé, botões, teclado virtual, display e processo do RetroArch. Dessa forma, verificam a lógica sem acionar os periféricos reais.
+Os testes usam objetos simulados no lugar do ADC, relé, botões, teclado virtual, display, processo do RetroArch e coletor de métricas. Dessa forma, verificam a lógica sem acionar os periféricos reais.
 
 ```bash
 python3 -m pytest
 ```
 
-A suíte cobre a histerese e a falha segura da ventoinha, a conversão da temperatura, a zona morta e os mapeamentos do joystick, a formatação do tempo da sessão e o ciclo de inicialização e encerramento do `main.py`.
+A suíte cobre a histerese e a falha segura da ventoinha, a conversão da temperatura, a zona morta e os mapeamentos do joystick, a formatação do tempo da sessão, o registro das métricas em JSONL e o ciclo de inicialização e encerramento do `main.py`.
 
 Os testes automatizados verificam a lógica de forma isolada e complementam a validação funcional realizada na Raspberry Pi com os periféricos reais.
 

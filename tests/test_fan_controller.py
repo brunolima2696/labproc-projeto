@@ -56,9 +56,12 @@ def test_controller_applies_temperature_sequence_and_closes_devices():
     controller = FanController(thermometer=thermometer, relay=relay)
 
     expected_states = [False, True, True, False]
-    for expected_state in expected_states:
+    temperatures = [24.0, 25.0, 23.0, 20.0]
+    for temperature, expected_state in zip(temperatures, expected_states):
         controller.update_once()
         assert relay.is_active is expected_state
+        assert controller.last_temperature == temperature
+        assert controller.fan_is_on is expected_state
 
     controller.close()
 
@@ -83,6 +86,8 @@ def test_read_error_enables_fan_and_reports_only_once():
     assert controller.update_once() is None
 
     assert relay.is_active is True
+    assert controller.last_temperature is None
+    assert controller.fan_is_on is True
     assert error_stream.getvalue().count("Erro no controle da ventoinha") == 1
 
     controller.close()
@@ -91,4 +96,3 @@ def test_read_error_enables_fan_and_reports_only_once():
 def test_invalid_temperature_limits_are_rejected():
     with pytest.raises(ValueError):
         next_fan_state(22.0, False, on_temperature=20.0, off_temperature=20.0)
-

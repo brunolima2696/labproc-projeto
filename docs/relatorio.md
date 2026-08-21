@@ -33,7 +33,7 @@ São Paulo - 2026
 
 O projeto utiliza uma Raspberry Pi 3B+ para emular jogos de Super Nintendo Entertainment System (SNES). A emulação é realizada pelo RetroArch com o núcleo libretro-snes9x, executados sobre um sistema operacional Linux. A Raspberry Pi mantém sua interface e seu sistema operacional convencionais e executa o software de emulação como uma aplicação.
 
-Além da execução dos jogos, o projeto explora os periféricos da Freenove Projects Board. O joystick analógico e quatro botões são usados como entrada; o display de sete segmentos mostra o tempo da sessão; o buzzer informa o início e o encerramento do RetroArch; e o termistor, o conversor ADS7830 e o relé formam um sistema de refrigeração automática com uma ventoinha de 5 V.
+Além da execução dos jogos, o projeto explora os periféricos da Freenove Projects Board. O joystick analógico e quatro botões são usados como entrada; o display de sete segmentos mostra o tempo da sessão; o buzzer informa o início e o encerramento do RetroArch; e o termistor, o conversor ADS7830 e o relé formam um sistema de refrigeração automática com uma ventoinha de 5 V. Durante cada sessão, a aplicação também registra as mensagens do RetroArch e métricas de desempenho da Raspberry Pi.
 
 O projeto constitui um caso prático de integração entre Linux, emulação, barramento I²C, entradas GPIO, acionamento de cargas e execução concorrente de rotinas em Python.
 
@@ -53,6 +53,7 @@ O projeto constitui um caso prático de integração entre Linux, emulação, ba
 | RF06 | Ler periodicamente o termistor integrado por meio do ADS7830 no barramento I²C. | Essencial |
 | RF07 | Ligar a ventoinha em 25 °C e desligá-la em 20 °C, aplicando histerese. | Essencial |
 | RF08 | Acionar a ventoinha de 5 V pelo relé integrado conectado ao GPIO12. | Essencial |
+| RF09 | Registrar em arquivos separados o log do RetroArch e as métricas de desempenho da sessão. | Importante |
 
 ## 2.2 Requisitos não funcionais
 
@@ -63,10 +64,11 @@ O projeto constitui um caso prático de integração entre Linux, emulação, ba
 | RNF03 | A leitura da temperatura deve ocorrer em segundo plano, sem imprimir continuamente os valores no terminal. |
 | RNF04 | Os GPIOs devem ser liberados e o relé desligado no encerramento normal da aplicação. |
 | RNF05 | Uma falha na leitura do termistor deve manter a ventoinha ligada como medida de segurança e emitir apenas a mensagem de erro necessária. |
+| RNF06 | As métricas devem ser gravadas em segundo plano sem impressão contínua no terminal. |
 
 # 3. Arquitetura
 
-O `main.py` coordena o ciclo de vida do RetroArch e das rotinas auxiliares. As leituras do joystick, a atualização do display e o controle térmico são executados em threads próprias. O buzzer é acionado diretamente nos eventos de início e encerramento.
+O `main.py` coordena o ciclo de vida do RetroArch e das rotinas auxiliares. As leituras do joystick, a atualização do display, o controle térmico e o monitoramento de desempenho são executados em threads próprias. O buzzer é acionado diretamente nos eventos de início e encerramento.
 
 ```mermaid
 flowchart TB
@@ -87,6 +89,9 @@ flowchart TB
     E[Relé GPIO12]
     C[Ventoinha de 5 V]
 
+    P[PerformanceMonitor.py<br>CPU, memória e temperaturas]
+    L[logs/<br>RetroArch LOG + desempenho JSONL]
+
     M --> R --> H
     J --> V
     B --> V --> R
@@ -95,6 +100,9 @@ flowchart TB
     M --> Z
     M --> F
     T --> F --> E --> C
+    M --> P --> L
+    R --> L
+    F --> P
 ```
 
 ## 3.1 Componentes físicos
@@ -121,6 +129,7 @@ Os exemplos do [repositório Freenove Projects Kit for Raspberry Pi](https://git
 | `src/modules/Alertor.py` | Controla os alertas sonoros emitidos pelo buzzer passivo. |
 | `src/modules/Thermometer.py` | Lê o termistor e converte o valor obtido em graus Celsius. |
 | `src/modules/FanController.py` | Aplica a histerese térmica e controla a ventoinha por meio do relé. |
+| `src/modules/PerformanceMonitor.py` | Coleta métricas do RetroArch e da Raspberry Pi e as registra em logs. |
 | `scripts/install_dependencies.sh` | Instala as dependências e configura o dispositivo virtual de entrada. |
 | `tests/` | Verifica automaticamente as principais regras do software com dispositivos simulados. |
 | `pytest.ini` | Define o diretório utilizado na coleta dos testes. |
@@ -161,6 +170,14 @@ O controlador é iniciado pelo `main.py` junto com os demais módulos. A leitura
 
 Para evitar conflitos entre periféricos que compartilham GPIOs na placa, a chave `3 — Active Buzzer` deve permanecer desligada e a chave `4 — Relay` ligada. O LED D7 acompanha o estado do relé e indica visualmente quando a ventoinha está em funcionamento.
 
+## 4.5 Registro de desempenho
+
+Ao iniciar uma sessão, o `main.py` cria dois arquivos no diretório `logs/`, ambos identificados pela mesma data e horário. O arquivo `retroarch-<sessão>.log` recebe o log nativo do RetroArch, iniciado em modo verboso. O arquivo `performance-<sessão>.jsonl` recebe uma amostra por segundo produzida pelo `PerformanceMonitor.py`.
+
+Cada linha do JSONL contém um objeto independente com horário, tempo decorrido, PID, uso de CPU e memória do processo RetroArch, uso geral de CPU e memória, temperatura do processador, leitura disponibilizada pelo termistor e estado da ventoinha. As métricas de processo e sistema são obtidas por `psutil`; a temperatura do processador é lida pela interface térmica do Linux, enquanto a temperatura da placa e o estado do relé são compartilhados pelo `FanController.py`, sem uma segunda leitura do ADS7830.
+
+Cada registro é persistido imediatamente, reduzindo a perda de dados em caso de interrupção. O monitor é encerrado junto com o RetroArch e não imprime as amostras no terminal. Os arquivos produzidos em `logs/` são ignorados pelo Git.
+
 
 # 5. Mapa de conexões
 
@@ -184,7 +201,7 @@ Todos os números abaixo seguem a numeração BCM dos GPIOs.
 
 # 6. Testes automatizados
 
-Os módulos foram organizados para separar as decisões do software do acesso direto ao hardware. ADC, termômetro, relé, botões, teclado virtual, pinos do display e processo do RetroArch podem ser substituídos por objetos simulados. 
+Os módulos foram organizados para separar as decisões do software do acesso direto ao hardware. ADC, termômetro, relé, botões, teclado virtual, pinos do display, processo do RetroArch e coletor de métricas podem ser substituídos por objetos simulados.
 
 A suíte utiliza `pytest` e está localizada em `tests/`. Ela verifica:
 
@@ -192,6 +209,7 @@ A suíte utiliza `pytest` e está localizada em `tests/`. Ela verifica:
 - a conversão das leituras do termistor para graus Celsius e a rejeição de valores inválidos;
 - a zona morta, a orientação dos eixos e o mapeamento dos quatro botões;
 - a conversão do tempo decorrido para os quatro dígitos do display;
+- a geração dos registros JSONL e as métricas associadas à sessão;
 - a inicialização e o encerramento dos módulos coordenados pelo `main.py`.
 
 Os testes são executados com:
@@ -204,7 +222,7 @@ Essa verificação isolada complementa os ensaios funcionais realizados na Raspb
 
 # 7. Instalação e execução
 
-O script `scripts/install_dependencies.sh` instala `retroarch`, `libretro-snes9x`, `i2c-tools`, `python3-smbus`, `python3-gpiozero`, `python3-evdev` e `python3-pytest`. O pacote `i2c-tools` é usado para diagnóstico do barramento, especialmente pelo comando `i2cdetect`, e não participa diretamente das leituras durante a execução.
+O script `scripts/install_dependencies.sh` instala `retroarch`, `libretro-snes9x`, `i2c-tools`, `python3-smbus`, `python3-gpiozero`, `python3-evdev`, `python3-psutil` e `python3-pytest`. O pacote `i2c-tools` é usado para diagnóstico do barramento, especialmente pelo comando `i2cdetect`, e não participa diretamente das leituras durante a execução.
 
 O mesmo instalador carrega o módulo `uinput`, registra seu carregamento em `/etc/modules-load.d/labproc-uinput.conf`, cria a regra `/etc/udev/rules.d/99-labproc-uinput.rules` para `/dev/uinput` e adiciona o usuário ao grupo `input`. Depois dessa configuração inicial é necessário reiniciar a sessão do usuário ou a Raspberry Pi.
 
@@ -224,4 +242,4 @@ O `main.py` abre a interface normal do RetroArch. O núcleo libretro-snes9x e o 
 
 # 8. Estado atual do projeto
 
-A versão final integra a emulação, o joystick, os botões GPIO, o display, o buzzer, o termômetro e o controle automático da ventoinha. O conjunto está funcional na Raspberry Pi com os periféricos conectados: o RetroArch é iniciado pelo `main.py`, as entradas controlam o emulador, o tempo da sessão é exibido, os alertas sonoros são emitidos e a refrigeração responde aos limites definidos de temperatura.
+A versão final integra a emulação, o joystick, os botões GPIO, o display, o buzzer, o termômetro, o controle automático da ventoinha e o registro de desempenho. O conjunto está funcional na Raspberry Pi com os periféricos conectados: o RetroArch é iniciado pelo `main.py`, as entradas controlam o emulador, o tempo da sessão é exibido, os alertas sonoros são emitidos, a refrigeração responde aos limites definidos de temperatura e cada sessão produz logs próprios para diagnóstico e análise.

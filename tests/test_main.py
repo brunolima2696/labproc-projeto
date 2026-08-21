@@ -3,6 +3,7 @@ import main as application
 
 class FakeProcess:
     def __init__(self, return_code=0):
+        self.pid = 1234
         self.return_code = return_code
         self.running = True
         self.wait_calls = []
@@ -50,13 +51,19 @@ class FakeModule:
         self.calls.append("close")
 
 
-def test_main_starts_and_closes_all_components():
+def test_main_starts_and_closes_all_components(tmp_path):
     buzzer = FakeBuzzer()
     controller = FakeModule()
     display = FakeModule()
     fan = FakeModule()
+    performance = FakeModule()
     process = FakeProcess(return_code=0)
     commands = []
+    performance_arguments = {}
+
+    def create_performance(**arguments):
+        performance_arguments.update(arguments)
+        return performance
 
     result = application.main(
         which=lambda executable: f"/usr/bin/{executable}",
@@ -66,15 +73,31 @@ def test_main_starts_and_closes_all_components():
             "controller": lambda: controller,
             "display": lambda: display,
             "fan": lambda: fan,
+            "performance": create_performance,
         },
+        log_directory=tmp_path,
+        session_id="test-session",
     )
 
     assert result == 0
-    assert commands == [("retroarch",)]
+    assert commands == [
+        (
+            "retroarch",
+            "-v",
+            "--log-file",
+            str(tmp_path / "retroarch-test-session.log"),
+        )
+    ]
+    assert performance_arguments == {
+        "process": process,
+        "fan_controller": fan,
+        "log_path": tmp_path / "performance-test-session.jsonl",
+    }
     assert buzzer.calls == ["started", "stopped", "close"]
     assert controller.calls == ["start", "stop", "close"]
     assert display.calls == ["start", "stop", "close"]
     assert fan.calls == ["start", "stop", "close"]
+    assert performance.calls == ["start", "stop", "close"]
 
 
 def test_main_returns_error_when_retroarch_is_missing(capsys):

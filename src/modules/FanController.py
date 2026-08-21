@@ -52,6 +52,7 @@ class FanController:
         self._stop_event = threading.Event()
         self._thread = None
         self._read_error_reported = False
+        self._last_temperature = None
 
         try:
             if self._relay is None:
@@ -76,10 +77,12 @@ class FanController:
                 self._off_temperature,
             )
             self._relay.on() if should_be_on else self._relay.off()
+            self._last_temperature = temperature
             self._read_error_reported = False
             return temperature
         except Exception as error:
             # Keep cooling enabled if temperature monitoring becomes unavailable.
+            self._last_temperature = None
             if self._relay is not None:
                 self._relay.on()
             if not self._read_error_reported:
@@ -89,6 +92,14 @@ class FanController:
                 )
                 self._read_error_reported = True
             return None
+
+    @property
+    def last_temperature(self):
+        return self._last_temperature
+
+    @property
+    def fan_is_on(self):
+        return self._relay is not None and self._relay.is_active
 
     def _monitor(self):
         while not self._stop_event.is_set():
